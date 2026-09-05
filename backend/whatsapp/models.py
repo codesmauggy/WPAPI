@@ -258,6 +258,8 @@ class Message(models.Model):
 
     STATUS_CHOICES = [
         ("received", "Received"),
+        ("queued", "Queued"),
+        ("sending", "Sending"),
         ("sent", "Sent"),
         ("delivered", "Delivered"),
         ("read", "Read"),

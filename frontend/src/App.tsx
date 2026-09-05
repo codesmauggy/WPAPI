@@ -2,10 +2,13 @@ import { useCallback, useState } from "react";
 
 import AppShell from "./components/layout/AppShell";
 import CampaignsPage from "./pages/Campaigns/CampaignsPage";
+import ChatsPage from "./pages/Chats/ChatsPage";
 import CampaignDetails from "./components/campaigns/CampaignDetails";
 import CampaignDeliveryReport from "./components/campaigns/CampaignDeliveryReport";
+import ChatCustomerPanel from "./components/chat/ChatCustomerPanel";
 
 import type { Campaign } from "./types/campaign";
+import type { Conversation } from "./types/chat";
 
 function App() {
   const [activeItem, setActiveItem] = useState("campaigns");
@@ -14,6 +17,9 @@ function App() {
 
   const [showDeliveryReport, setShowDeliveryReport] =
     useState(false);
+
+  const [selectedConversation, setSelectedConversation] =
+    useState<Conversation | null>(null);
 
   const handleSelectCampaign = useCallback(
     (campaign: Campaign | null) => {
@@ -29,6 +35,16 @@ function App() {
     },
     []
   );
+
+  const handleConversationSelected =
+    useCallback(
+      (conversation: Conversation | null) => {
+        setSelectedConversation(
+          conversation
+        );
+      },
+      []
+    );
 
   function getPageTitle() {
     switch (activeItem) {
@@ -54,23 +70,40 @@ function App() {
         return "WhatsApp Business";
     }
   }
-
   function renderPage() {
     switch (activeItem) {
+      case "chats":
+        return (
+          <ChatsPage
+            onConversationSelected={
+              handleConversationSelected
+            }
+          />
+        );
+
       case "campaigns":
-        if (showDeliveryReport && selectedCampaign) {
+        if (
+          showDeliveryReport &&
+          selectedCampaign
+        ) {
           return (
             <CampaignDeliveryReport
               campaign={selectedCampaign}
-              onBack={() => setShowDeliveryReport(false)}
-              onCampaignUpdated={handleCampaignUpdated}
+              onBack={() =>
+                setShowDeliveryReport(false)
+              }
+              onCampaignUpdated={
+                handleCampaignUpdated
+              }
             />
           );
         }
 
         return (
           <CampaignsPage
-            onSelectCampaign={handleSelectCampaign}
+            onSelectCampaign={
+              handleSelectCampaign
+            }
           />
         );
 
@@ -78,7 +111,9 @@ function App() {
         return (
           <div className="module-placeholder">
             <h2>{getPageTitle()}</h2>
-            <p>This module will be implemented next.</p>
+            <p>
+              This module will be implemented next.
+            </p>
           </div>
         );
     }
@@ -86,11 +121,22 @@ function App() {
 
   function renderRightPanel() {
     switch (activeItem) {
+      case "chats":
+        return (
+          <ChatCustomerPanel
+            conversation={
+              selectedConversation
+            }
+          />
+        );
+
       case "campaigns":
         return (
           <CampaignDetails
             campaign={selectedCampaign}
-            onCampaignUpdated={handleCampaignUpdated}
+            onCampaignUpdated={
+              handleCampaignUpdated
+            }
             onOpenDeliveryReport={() => {
               if (selectedCampaign) {
                 setShowDeliveryReport(true);

@@ -14,27 +14,64 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 
+
+# ============================================================
+# Paths
+# ============================================================
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
+# BASE_DIR = Path(__file__).resolve().parent.parent
 BASE_DIR = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = BASE_DIR.parent
+
+# ============================================================
+# Environment
+# ============================================================
+
+load_dotenv(PROJECT_ROOT / ".env")
+
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
-
+# ============================================================
+# Security
+# ============================================================
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-zv2f!(aps(pr(1zu6bfs#@j*0zq(z^h#j*ewen^8f4y^)tsx$9'
+# SECRET_KEY = 'django-insecure-zv2f!(aps(pr(1zu6bfs#@j*0zq(z^h#j*ewen^8f4y^)tsx$9'
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+
+if not SECRET_KEY:
+    raise RuntimeError(
+        "DJANGO_SECRET_KEY is not configured."
+    )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# DEBUG = True
+
+DEBUG = os.getenv(
+    "DJANGO_DEBUG",
+    "False",
+).lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    'lay-roberts-northwest-feelings.trycloudflare.com',  # Your Cloudflare URL
-    '.trycloudflare.com',  # Allow all Cloudflare tunnels
+    host.strip()
+    for host in os.getenv(
+        "DJANGO_ALLOWED_HOSTS",
+        "localhost,127.0.0.1",
+    ).split(",")
+    if host.strip()
 ]
 
 load_dotenv()
+# ============================================================
+# WhatsApp Cloud API
+# ============================================================
+
 WHATSAPP_VERIFY_TOKEN = os.getenv(
     "WHATSAPP_VERIFY_TOKEN",
     "",
@@ -57,12 +94,13 @@ WHATSAPP_BUSINESS_ACCOUNT_ID = os.getenv(
 
 WHATSAPP_API_VERSION = os.getenv(
     "WHATSAPP_API_VERSION",
-    "",
+    "v26.0",
 )
 
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -71,6 +109,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     
     'rest_framework',
+    'channels',
     'whatsapp',
 ]
 
@@ -107,6 +146,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = "config.asgi.application"
 
 
 # Database
@@ -170,12 +210,14 @@ MAILERS = {
 # Celery / Redis
 # ============================================================
 
-CELERY_BROKER_URL = (
-    "redis://127.0.0.1:6379/0"
+CELERY_BROKER_URL = os.getenv(
+    "CELERY_BROKER_URL",
+    "redis://127.0.0.1:6379/0",
 )
 
-CELERY_RESULT_BACKEND = (
-    "redis://127.0.0.1:6379/1"
+CELERY_RESULT_BACKEND = os.getenv(
+    "CELERY_RESULT_BACKEND",
+    "redis://127.0.0.1:6379/1",
 )
 
 CELERY_ACCEPT_CONTENT = [
@@ -190,18 +232,33 @@ CELERY_TIMEZONE = TIME_ZONE
 
 CELERY_ENABLE_UTC = True
 
+
 # ============================================================
 # Redis Cache
 # ============================================================
 
+REDIS_CACHE_URL = os.getenv(
+    "REDIS_CACHE_URL",
+    "redis://127.0.0.1:6379/2",
+)
+
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/2",
+        "LOCATION": REDIS_CACHE_URL,
         "OPTIONS": {
             "CLIENT_CLASS": (
                 "django_redis.client.DefaultClient"
             ),
+        },
+    },
+}
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": ["redis://127.0.0.1:6379/1"],
         },
     },
 }

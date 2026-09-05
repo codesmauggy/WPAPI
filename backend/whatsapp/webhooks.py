@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
+from .events import broadcast_dashboard_event
 
 from .models import (
     WhatsAppPhoneNumber,
@@ -229,6 +230,39 @@ def process_incoming_message(
     )
 
     print(
+        f"Broadcasting message.created for message {message.id}"
+    )
+
+    broadcast_dashboard_event(
+        {
+            "type": "message.created",
+            "conversation_id": conversation.id,
+            "message": {
+                "id": message.id,
+                "conversation_id": message.conversation_id,
+                "whatsapp_message_id": message.whatsapp_message_id,
+                "direction": message.direction,
+                "message_type": message.message_type,
+                "text": message.text,
+                "status": message.status,
+                "created_at": message.created_at.isoformat(),
+            },
+        }
+    )
+
+    print(
+        f"message.created broadcast completed for message {message.id}"
+    )
+
+    conversation.last_message_at = timezone.now()
+    conversation.save(
+        update_fields=[
+            "last_message_at",
+            "updated_at",
+        ]
+    )
+
+    print(
         f"Incoming WhatsApp message "
         f"from {sender}: {text}"
     )
@@ -313,6 +347,26 @@ def process_message_status(
         ]
     )
 
+    # ---------------------------------------------------------
+    # Realtime dashboard update
+    # ---------------------------------------------------------
+    broadcast_dashboard_event(
+        {
+            "type": "message.updated",
+            "conversation_id": message.conversation_id,
+            "message": {
+                "id": message.id,
+                "conversation_id": message.conversation_id,
+                "whatsapp_message_id": message.whatsapp_message_id,
+                "direction": message.direction,
+                "message_type": message.message_type,
+                "text": message.text,
+                "status": message.status,
+                "created_at": message.created_at.isoformat(),
+            },
+        }
+    )
+
     print(
         f"WhatsApp message "
         f"{whatsapp_message_id} "
@@ -341,6 +395,19 @@ def process_message_status(
             "No CampaignRecipient found for "
             f"message {whatsapp_message_id}"
         )
+
+        broadcast_dashboard_event(
+            {
+                "type": "conversation.updated",
+                "conversation_id": message.conversation_id,
+                "last_message_at": (
+                    message.conversation.last_message_at.isoformat()
+                    if message.conversation.last_message_at
+                    else None
+                ),
+            }
+        )
+
         return
 
     now = timezone.now()
@@ -407,9 +474,23 @@ def process_message_status(
     # ---------------------------------------------------------
     # 5. Update Campaign counters
     # ---------------------------------------------------------
-
     update_campaign_counters(
         campaign_recipient.campaign
+    )
+
+    # ---------------------------------------------------------
+    # 6. Realtime conversation update
+    # ---------------------------------------------------------
+    broadcast_dashboard_event(
+        {
+            "type": "conversation.updated",
+            "conversation_id": message.conversation_id,
+            "last_message_at": (
+                message.conversation.last_message_at.isoformat()
+                if message.conversation.last_message_at
+                else None
+            ),
+        }
     )
 
 def extract_whatsapp_error(

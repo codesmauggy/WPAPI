@@ -1,6 +1,7 @@
 from celery import shared_task
 from django.utils import timezone
-
+from .outbound import send_outbound_message
+from .webhooks import process_whatsapp_webhook
 from .campaigns import (
     CampaignEligibilityError,
     CampaignExecutionError,
@@ -499,4 +500,73 @@ def dispatch_next_recipient():
         "status": "DISPATCHED",
         "recipient_id": recipient.id,
         "campaign_id": recipient.campaign_id,
+    }
+
+# ============================================================
+# Generic Outbound WhatsApp Message
+# ============================================================
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+)
+def send_message_task(
+    self,
+    message_id: int,
+):
+    """
+    Send one generic outbound WhatsApp message.
+
+    This task is used by:
+        - Chat
+        - Future automation
+        - Future ERP integrations
+        - Future scheduled messaging
+
+    Campaign sending continues using the existing
+    campaign-specific dispatcher for now.
+    """
+
+    result = send_outbound_message(
+        message_id
+    )
+
+    # ---------------------------------------------------------
+    # Message scheduled for a future global slot
+    # ---------------------------------------------------------
+
+    if (
+        result.get("status")
+        == "SCHEDULED"
+    ):
+
+        delay = result.get(
+            "delay",
+            0,
+        )
+
+        send_message_task.apply_async(
+            args=[
+                message_id,
+            ],
+            countdown=delay,
+        )
+
+        return result
+
+    return result
+
+@shared_task(bind=True, max_retries=3)
+def process_webhook_task(self, payload: dict):
+    """
+    Process a WhatsApp webhook payload asynchronously.
+
+    The webhook HTTP request only queues this task.
+    Actual database processing happens inside Celery.
+    """
+    process_whatsapp_webhook(payload)
+
+    return {
+        "success": True,
+        "status": "PROCESSED",
     }

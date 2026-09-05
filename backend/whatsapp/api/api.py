@@ -8,7 +8,7 @@ from django.views.decorators.http import (
     require_POST,
 )
 
-from .models import (
+from whatsapp.models import (
     Campaign,
     CampaignRecipient,
     WhatsAppPhoneNumber,
@@ -16,20 +16,20 @@ from .models import (
     WhatsAppTemplate,
 )
 
-from .campaigns import update_campaign_statistics
+from whatsapp.campaigns import update_campaign_statistics
 
-from .audiences import (
+from whatsapp.audiences import (
     AudienceGenerationError,
     generate_campaign_recipients,
 )
 
-from .campaign_preview import (
+from whatsapp.campaign_preview import (
     CampaignPreviewError,
     preview_campaign,
 )
 
-from .tasks import queue_campaign
-from .rate_limiter import reset_rate_limiter
+from whatsapp.tasks import queue_campaign
+from whatsapp.rate_limiter import reset_rate_limiter
 
 # ============================================================
 # Campaign Creation Options

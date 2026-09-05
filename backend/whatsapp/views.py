@@ -18,7 +18,6 @@ def whatsapp_webhook(request):
         status=405,
     )
 
-
 def verify_webhook(request):
     mode = request.GET.get("hub.mode")
     token = request.GET.get("hub.verify_token")
@@ -38,35 +37,32 @@ def receive_webhook(request):
         payload = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse(
-            {"error": "Invalid JSON"},
+            {
+                "success": False,
+                "error": {
+                    "code": "INVALID_JSON",
+                    "message": "Invalid JSON payload.",
+                },
+            },
             status=400,
         )
 
-    print("WhatsApp webhook received:")
-    print(
-        json.dumps(
-            payload,
-            indent=2,
-        )
-    )
-
     try:
-        from .webhooks import (
-            process_whatsapp_webhook
-        )
+        from .tasks import process_webhook_task
 
-        process_whatsapp_webhook(payload)
+        process_webhook_task.delay(payload)
 
     except Exception as exc:
-        print(
-            "Error processing WhatsApp webhook:"
-        )
+        print("Error queueing WhatsApp webhook:")
         print(exc)
 
         return JsonResponse(
             {
                 "success": False,
-                "error": str(exc),
+                "error": {
+                    "code": "QUEUE_ERROR",
+                    "message": str(exc),
+                },
             },
             status=500,
         )
@@ -74,6 +70,10 @@ def receive_webhook(request):
     return JsonResponse(
         {
             "success": True,
-            "message": "Webhook processed",
-        }
+            "message": "Webhook queued successfully.",
+            "meta": {
+                "queued": True,
+            },
+        },
+        status=200,
     )

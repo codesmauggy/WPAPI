@@ -33,6 +33,17 @@ django-admin startproject config .
 # django app
 python manage.py startapp whatsapp
 
+# Clean Project
+python manage.py clean_project
+# Delete Datebase
+rm -r db.sqlite3
+# Start Frest Project and Database
+python manage.py makemigrations
+python manage.py migrate
+python manage.py createsuperuser
+# Start Backend
+python manage.py runserver
+
 # cloudflared tunnel
 cloudflared tunnel --url http://127.0.0.1:8000
 # url:- https://contract-healing-vessel-angels.trycloudflare.com 
@@ -59,3 +70,14 @@ docker exec wpapi-redis redis-cli ping
 # Start/Restart Celery
 celery -A config worker --loglevel=INFO --pool=solo
 celery -A config inspect registered
+
+
+# Zipping Project
+& "C:\Program Files\7-Zip\7z.exe" a -tzip ".\wp_api_gap_analysis.zip" ".\wp_api\*" `
+  "-xr!node_modules" `
+  "-xr!.venv" `
+  "-xr!__pycache__" `
+  "-xr!.git" `
+  "-xr!dist" `
+  "-xr!build" `
+  "-x!.env"
