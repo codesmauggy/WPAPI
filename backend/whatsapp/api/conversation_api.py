@@ -1,9 +1,12 @@
 import json
 
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Q
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
+
+from ..events import broadcast_dashboard_event
 
 from ..models import Conversation, Message
 
@@ -19,7 +22,7 @@ def serialize_conversation(conversation):
 
     unread_count = conversation.messages.filter(
         direction="inbound",
-        status="received",
+        read_at__isnull=True,
     ).count()
 
     last_message = (
@@ -90,6 +93,11 @@ def serialize_message(message):
         "message_type": message.message_type,
         "text": message.text,
         "status": message.status,
+        "read_at": (
+            message.read_at.isoformat()
+            if message.read_at
+            else None
+        ),
         "created_at": (
             message.created_at.isoformat()
             if message.created_at
@@ -793,3 +801,99 @@ def conversation_messages(
             },
             status=500,
         )
+
+# ============================================================
+# Mark Conversation Read
+# ============================================================
+
+@csrf_exempt
+def conversation_mark_read(
+    request,
+    conversation_id,
+):
+    """
+    Mark all inbound messages in a conversation as read by
+    the dashboard/operator. This does NOT change the WhatsApp
+    delivery status stored in Message.status.
+    """
+
+    if request.method != "POST":
+        return JsonResponse(
+            {
+                "success": False,
+                "error": {
+                    "code": "METHOD_NOT_ALLOWED",
+                    "message": "Only POST method is allowed.",
+                    "details": {},
+                },
+            },
+            status=405,
+        )
+
+    try:
+        conversation = (
+            Conversation.objects
+            .select_related("customer", "phone_number")
+            .get(id=conversation_id)
+        )
+    except Conversation.DoesNotExist:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": {
+                    "code": "NOT_FOUND",
+                    "message": "Conversation not found.",
+                    "details": {},
+                },
+            },
+            status=404,
+        )
+
+    now = timezone.now()
+
+    with transaction.atomic():
+        updated = (
+            Message.objects
+            .filter(
+                conversation=conversation,
+                direction="inbound",
+                read_at__isnull=True,
+            )
+            .update(read_at=now)
+        )
+
+        unread_count = (
+            Message.objects
+            .filter(
+                conversation=conversation,
+                direction="inbound",
+                read_at__isnull=True,
+            )
+            .count()
+        )
+
+        transaction.on_commit(
+            lambda: broadcast_dashboard_event(
+                {
+                    "type": "conversation.updated",
+                    "conversation_id": conversation.id,
+                    "unread_count": unread_count,
+                    "read_at": now.isoformat(),
+                }
+            )
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "data": {
+                "conversation_id": conversation.id,
+                "unread_count": unread_count,
+                "updated_messages": updated,
+                "read_at": now.isoformat(),
+            },
+            "message": "Conversation marked as read.",
+            "meta": {},
+        },
+        status=200,
+    )

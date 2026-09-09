@@ -20,6 +20,7 @@ from .dispatcher import (
 from .rate_limiter import (
     reserve_send_slot,
 )
+from .campaign_events import broadcast_campaign_update
 
 
 # ============================================================
@@ -119,6 +120,11 @@ def send_campaign_recipient_task(
                     "status",
                     "updated_at",
                 ]
+            )
+
+            broadcast_campaign_update(
+                campaign.id,
+                recipient.id,
             )
 
         return {
@@ -239,6 +245,11 @@ def send_campaign_recipient_task(
                 ]
             )
 
+            broadcast_campaign_update(
+                campaign.id,
+                recipient.id,
+            )
+
         return {
             "success": False,
             "recipient_id": recipient.id,
@@ -344,6 +355,11 @@ def send_campaign_recipient_task(
                     "error_message",
                     "updated_at",
                 ]
+            )
+
+            broadcast_campaign_update(
+                campaign.id,
+                recipient.id,
             )
 
         raise

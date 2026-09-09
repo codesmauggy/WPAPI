@@ -5,6 +5,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from ..models import Conversation, Message
 from ..tasks import send_message_task
+from ..events import broadcast_dashboard_event
 
 
 def serialize_message(message):
@@ -19,6 +20,11 @@ def serialize_message(message):
         "message_type": message.message_type,
         "text": message.text,
         "status": message.status,
+        "read_at": (
+            message.read_at.isoformat()
+            if message.read_at
+            else None
+        ),
         "created_at": (
             message.created_at.isoformat()
             if message.created_at
@@ -235,6 +241,26 @@ def send_conversation_message(
             "last_message_at",
             "updated_at",
         ]
+    )
+
+    # Realtime dashboard update. The REST response is still
+    # returned to the initiating client, while WebSocket keeps
+    # all other connected dashboard clients synchronized.
+    broadcast_dashboard_event(
+        {
+            "type": "message.created",
+            "conversation_id": conversation.id,
+            "message": serialize_message(message),
+        }
+    )
+
+    broadcast_dashboard_event(
+        {
+            "type": "conversation.updated",
+            "conversation_id": conversation.id,
+            "last_message_at": conversation.last_message_at.isoformat(),
+            "last_message": serialize_message(message),
+        }
     )
 
     # =========================================================

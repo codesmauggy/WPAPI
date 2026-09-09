@@ -6,6 +6,7 @@ import type {
   Message,
   MessagesResponse,
   SendMessageResponse,
+  MarkConversationReadResponse,
 } from "../types/chat";
 
 export async function getConversations(): Promise<Conversation[]> {
@@ -41,4 +42,15 @@ export async function sendConversationMessage(
     );
 
   return response.data.data.message;
+}
+
+export async function markConversationRead(
+  conversationId: number
+): Promise<MarkConversationReadResponse["data"]> {
+  const response =
+    await apiClient.post<MarkConversationReadResponse>(
+      `/conversations/${conversationId}/read/`
+    );
+
+  return response.data.data;
 }

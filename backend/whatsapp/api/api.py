@@ -30,6 +30,7 @@ from whatsapp.campaign_preview import (
 
 from whatsapp.tasks import queue_campaign
 from whatsapp.rate_limiter import reset_rate_limiter
+from whatsapp.campaign_events import broadcast_campaign_update
 
 # ============================================================
 # Campaign Creation Options
@@ -554,9 +555,21 @@ def queue_campaign_api(
             ]
         )
 
+        transaction.on_commit(
+            lambda: broadcast_campaign_update(
+                campaign.id
+            )
+        )
+
         # ----------------------------------------------------
         # Queue after DB commit
         # ----------------------------------------------------
+
+        transaction.on_commit(
+            lambda: broadcast_campaign_update(
+                campaign.id
+            )
+        )
 
         transaction.on_commit(
             lambda: queue_campaign.delay(
@@ -968,6 +981,12 @@ def pause_campaign(
             ]
         )
 
+        transaction.on_commit(
+            lambda: broadcast_campaign_update(
+                campaign.id
+            )
+        )
+
     return JsonResponse(
         {
             "success": True,
@@ -1073,6 +1092,12 @@ def resume_campaign(
                     "completed_at",
                     "updated_at",
                 ]
+            )
+
+            transaction.on_commit(
+                lambda: broadcast_campaign_update(
+                    campaign.id
+                )
             )
 
             return JsonResponse(

@@ -208,6 +208,7 @@ class MessageAdmin(admin.ModelAdmin):
         "message_type",
         "status",
         "whatsapp_message_id",
+        "read_at",
         "created_at",
     )
 
@@ -226,6 +227,7 @@ class MessageAdmin(admin.ModelAdmin):
     )
 
     readonly_fields = (
+        "read_at",
         "created_at",
     )
 

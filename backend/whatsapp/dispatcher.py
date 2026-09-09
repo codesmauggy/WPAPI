@@ -2,6 +2,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import Campaign, CampaignRecipient
+from .campaign_events import broadcast_campaign_update
 
 
 def get_next_recipient():
@@ -49,6 +50,13 @@ def get_next_recipient():
                 "queued_at",
                 "updated_at",
             ]
+        )
+
+        transaction.on_commit(
+            lambda: broadcast_campaign_update(
+                campaign_id=recipient.campaign_id,
+                recipient_id=recipient.id,
+            )
         )
 
         return recipient

@@ -39,6 +39,9 @@ import type {
 } from "../../api/campaigns";
 
 import CampaignStatusBadge from "./CampaignStatusBadge";
+import useDashboardWebSocket, {
+  type DashboardEvent,
+} from "../../hooks/useDashboardWebSocket";
 
 /* =========================================================
    PROPS
@@ -264,30 +267,56 @@ export default function CampaignDeliveryReport({
   }, [campaign.id]);
 
   /* =======================================================
-     LIVE POLLING
+     REALTIME CAMPAIGN UPDATES
      ======================================================= */
 
-  useEffect(() => {
+  function handleDashboardEvent(event: DashboardEvent) {
     if (
-      campaign.status !==
-      "RUNNING"
+      event.type !== "campaign.updated" ||
+      event.campaign_id !== campaign.id ||
+      !event.campaign
     ) {
       return;
     }
 
-    const interval =
-      window.setInterval(() => {
-        void refreshAll();
-      }, 5000);
+    const live = event.campaign;
 
-    return () =>
-      window.clearInterval(
-        interval
-      );
-  }, [
-    campaign.id,
-    campaign.status,
-  ]);
+    onCampaignUpdated?.({
+      ...campaign,
+      status: live.status,
+      statistics: {
+        ...campaign.statistics,
+        ...live.statistics,
+      },
+      updated_at: live.updated_at ?? campaign.updated_at,
+      started_at: live.started_at ?? campaign.started_at,
+      completed_at: live.completed_at ?? campaign.completed_at,
+    });
+
+    if (event.recipient && typeof event.recipient === "object") {
+      const incoming = event.recipient as any;
+
+      setRecipients((current) => {
+        const exists = current.some(
+          (item) => item.id === incoming.id
+        );
+
+        if (!exists) {
+          return current;
+        }
+
+        return current.map((item) =>
+          item.id === incoming.id
+            ? { ...item, ...incoming }
+            : item
+        );
+      });
+    }
+  }
+
+  useDashboardWebSocket({
+    onEvent: handleDashboardEvent,
+  });
 
   /* =======================================================
      PAGINATION

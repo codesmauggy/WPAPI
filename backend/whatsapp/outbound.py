@@ -4,6 +4,7 @@ from django.utils import timezone
 from .models import Conversation, Message
 from .rate_limiter import reserve_send_slot
 from .services import send_text_message, WhatsAppAPIError
+from .events import broadcast_dashboard_event
 
 
 def serialize_message(message):
@@ -19,6 +20,11 @@ def serialize_message(message):
         "message_type": message.message_type,
         "text": message.text,
         "status": message.status,
+        "read_at": (
+            message.read_at.isoformat()
+            if message.read_at
+            else None
+        ),
         "created_at": (
             message.created_at.isoformat()
             if message.created_at
@@ -65,6 +71,14 @@ def claim_message_for_sending(message_id):
             ]
         )
 
+        broadcast_dashboard_event(
+            {
+                "type": "message.updated",
+                "conversation_id": message.conversation_id,
+                "message": serialize_message(message),
+            }
+        )
+
         return message
 
 
@@ -76,14 +90,27 @@ def mark_message_failed(
     Mark an outbound message as failed.
     """
 
-    Message.objects.filter(
-        id=message_id,
-    ).update(
-        status="failed",
-        raw_payload={
-            "error": str(error),
-        },
+    updated = (
+        Message.objects
+        .select_related("conversation")
+        .filter(id=message_id)
+        .update(
+            status="failed",
+            raw_payload={
+                "error": str(error),
+            },
+        )
     )
+
+    if updated:
+        message = Message.objects.get(id=message_id)
+        broadcast_dashboard_event(
+            {
+                "type": "message.updated",
+                "conversation_id": message.conversation_id,
+                "message": serialize_message(message),
+            }
+        )
 
 
 def send_outbound_message(message_id):
@@ -260,6 +287,16 @@ def send_outbound_message(message_id):
             raw_payload=result,
         )
 
+        message.refresh_from_db()
+
+        broadcast_dashboard_event(
+            {
+                "type": "message.updated",
+                "conversation_id": message.conversation_id,
+                "message": serialize_message(message),
+            }
+        )
+
         # -----------------------------------------------------
         # Update conversation
         # -----------------------------------------------------
@@ -277,6 +314,15 @@ def send_outbound_message(message_id):
                 "last_message_at",
                 "updated_at",
             ]
+        )
+
+        broadcast_dashboard_event(
+            {
+                "type": "conversation.updated",
+                "conversation_id": conversation.id,
+                "last_message_at": conversation.last_message_at.isoformat(),
+                "last_message": serialize_message(message),
+            }
         )
 
         print(

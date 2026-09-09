@@ -2030,9 +2030,12 @@ button:disabled {
   font-size: 10px;
 }
 
-.message-status.delivered,
-.message-status.read {
+.message-status.delivered {
   color: var(--green);
+}
+
+.message-status.read{
+  color: var(--blue);
 }
 
 .message-status.failed {

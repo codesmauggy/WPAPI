@@ -25,6 +25,7 @@ from .api.conversation_api import (
     conversation_list,
     conversation_detail,
     conversation_messages,
+    conversation_mark_read,
 )
 
 from .api.message_api import (
@@ -84,6 +85,12 @@ urlpatterns = [
         "conversations/<int:conversation_id>/send/",
         send_conversation_message,
         name="conversation-send",
+    ),
+
+    path(
+        "conversations/<int:conversation_id>/read/",
+        conversation_mark_read,
+        name="conversation-mark-read",
     ),
 
     path(

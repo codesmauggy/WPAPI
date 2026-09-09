@@ -9,6 +9,7 @@ from .models import (
 )
 
 from .services import send_template_message
+from .campaign_events import broadcast_campaign_update
 
 
 # ============================================================
@@ -325,6 +326,11 @@ def send_campaign_recipient(
             )
         )
 
+    broadcast_campaign_update(
+        campaign_id=campaign.id,
+        recipient_id=recipient.id,
+    )
+
     # --------------------------------------------------------
     # Customer safety checks
     #
@@ -350,6 +356,8 @@ def send_campaign_recipient(
             ]
         )
 
+        broadcast_campaign_update(campaign.id, recipient.id)
+
         raise CampaignEligibilityError(
             "Recipient has no customer."
         )
@@ -374,6 +382,8 @@ def send_campaign_recipient(
                 "updated_at",
             ]
         )
+
+        broadcast_campaign_update(campaign.id, recipient.id)
 
         raise CampaignEligibilityError(
             "Customer is inactive. "
@@ -402,6 +412,8 @@ def send_campaign_recipient(
             ]
         )
 
+        broadcast_campaign_update(campaign.id, recipient.id)
+
         raise CampaignEligibilityError(
             "Customer has not opted in to "
             "marketing messages. "
@@ -428,6 +440,8 @@ def send_campaign_recipient(
             ]
         )
 
+        broadcast_campaign_update(campaign.id, recipient.id)
+
         raise CampaignEligibilityError(
             "Customer has no phone number."
         )
@@ -451,6 +465,8 @@ def send_campaign_recipient(
                 "updated_at",
             ]
         )
+
+        broadcast_campaign_update(campaign.id, recipient.id)
 
         raise CampaignEligibilityError(
             "Recipient has no phone number."
@@ -611,63 +627,37 @@ def send_campaign_recipient(
 def update_campaign_statistics(
     campaign,
 ):
-    """
-    Recalculate campaign statistics from CampaignRecipient.
+    """Recalculate persisted campaign counters and broadcast the live state."""
 
-    This keeps Campaign counters synchronized with
-    the actual recipient records.
-    """
+    recipients = CampaignRecipient.objects.filter(campaign=campaign)
 
-    campaign.sent_count = (
-        CampaignRecipient.objects
-        .filter(
-            campaign=campaign,
-            status__in=[
-                "SENT",
-                "DELIVERED",
-                "READ",
-            ],
-        )
-        .count()
-    )
+    total = recipients.count()
+    pending = recipients.filter(status="PENDING").count()
+    queued = recipients.filter(status="QUEUED").count()
+    sending = recipients.filter(status="SENDING").count()
+    sent = recipients.filter(status__in=["SENT", "DELIVERED", "READ"]).count()
+    delivered = recipients.filter(status__in=["DELIVERED", "READ"]).count()
+    read = recipients.filter(status="READ").count()
+    failed = recipients.filter(status="FAILED").count()
+    cancelled = recipients.filter(status="CANCELLED").count()
 
-    campaign.delivered_count = (
-        CampaignRecipient.objects
-        .filter(
-            campaign=campaign,
-            status__in=[
-                "DELIVERED",
-                "READ",
-            ],
-        )
-        .count()
-    )
+    campaign.total_recipients = total
+    campaign.sent_count = sent
+    campaign.delivered_count = delivered
+    campaign.read_count = read
+    campaign.failed_count = failed
 
-    campaign.read_count = (
-        CampaignRecipient.objects
-        .filter(
-            campaign=campaign,
-            status="READ",
-        )
-        .count()
-    )
-
-    campaign.failed_count = (
-        CampaignRecipient.objects
-        .filter(
-            campaign=campaign,
-            status="FAILED",
-        )
-        .count()
-    )
-
-    campaign.total_recipients = (
-        CampaignRecipient.objects
-        .filter(
-            campaign=campaign,
-        )
-        .count()
-    )
+    if (
+        total > 0
+        and pending == 0
+        and queued == 0
+        and sending == 0
+        and sent + failed + cancelled >= total
+        and campaign.status == "RUNNING"
+    ):
+        campaign.status = "COMPLETED"
+        if not campaign.completed_at:
+            campaign.completed_at = timezone.now()
 
     campaign.save(
         update_fields=[
@@ -676,9 +666,13 @@ def update_campaign_statistics(
             "delivered_count",
             "read_count",
             "failed_count",
+            "status",
+            "completed_at",
             "updated_at",
         ]
     )
+
+    broadcast_campaign_update(campaign.id)
 
 
 # ============================================================

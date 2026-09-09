@@ -32,6 +32,7 @@ export interface ChatLastMessage {
   message_type: string;
   text: string;
   status: MessageStatus;
+  read_at: string | null;
   created_at: string;
 }
 
@@ -55,6 +56,7 @@ export interface Message {
   message_type: string;
   text: string;
   status: MessageStatus;
+  read_at: string | null;
   created_at: string;
 }
 
@@ -81,6 +83,18 @@ export interface SendMessageResponse {
   success: boolean;
   data: {
     message: Message;
+  };
+  message: string;
+  meta: Record<string, unknown>;
+}
+
+export interface MarkConversationReadResponse {
+  success: boolean;
+  data: {
+    conversation_id: number;
+    unread_count: number;
+    updated_messages: number;
+    read_at: string;
   };
   message: string;
   meta: Record<string, unknown>;

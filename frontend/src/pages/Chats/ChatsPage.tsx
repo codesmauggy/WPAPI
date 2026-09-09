@@ -8,6 +8,7 @@ import {
 import {
   getConversations,
   getConversationMessages,
+  markConversationRead,
   sendConversationMessage,
 } from "../../api/conversations";
 
@@ -194,6 +195,42 @@ export default function ChatsPage({
 
   /*
    * --------------------------------------------------
+   * MARK CONVERSATION READ
+   * --------------------------------------------------
+   *
+   * The database is the source of truth for dashboard
+   * unread state. WebSocket distributes the resulting
+   * conversation.updated event to connected clients.
+   */
+
+  const markSelectedConversationRead =
+    useCallback(async (conversationId: number) => {
+      try {
+        const result =
+          await markConversationRead(
+            conversationId
+          );
+
+        setConversations((current) =>
+          current.map((conversation) =>
+            conversation.id === conversationId
+              ? {
+                  ...conversation,
+                  unread_count: result.unread_count,
+                }
+              : conversation
+          )
+        );
+      } catch (error) {
+        console.error(
+          "Failed to mark conversation as read:",
+          error
+        );
+      }
+    }, []);
+
+  /*
+   * --------------------------------------------------
    * REALTIME WEBSOCKET EVENTS
    * --------------------------------------------------
    *
@@ -274,6 +311,15 @@ export default function ChatsPage({
                 newMessage,
               ];
             });
+
+            // If the conversation is currently open, the
+            // inbound message is immediately considered read
+            // by the dashboard and persisted in the DB.
+            if (newMessage.direction === "inbound") {
+              void markSelectedConversationRead(
+                newMessage.conversation_id
+              );
+            }
           }
 
           /*
@@ -557,7 +603,7 @@ export default function ChatsPage({
           );
         }
       },
-      []
+      [markSelectedConversationRead]
     );
 
   /*
@@ -605,25 +651,14 @@ export default function ChatsPage({
       selectedConversationId
     );
 
-    /*
-     * Immediately clear the local unread badge
-     * when the operator opens the conversation.
-     */
-    setConversations((current) =>
-      current.map(
-        (conversation) =>
-          conversation.id ===
-          selectedConversationId
-            ? {
-                ...conversation,
-                unread_count: 0,
-              }
-            : conversation
-      )
+    // Persist dashboard read state in the database.
+    void markSelectedConversationRead(
+      selectedConversationId
     );
   }, [
     selectedConversationId,
     loadMessages,
+    markSelectedConversationRead,
     onConversationSelected,
   ]);
 

@@ -1,10 +1,25 @@
 import { useEffect, useRef } from "react";
 import type { Message } from "../types/chat";
+import type { CampaignStatistics, CampaignStatus } from "../types/campaign";
+
+export interface DashboardCampaignEvent {
+  id: number;
+  name: string;
+  status: CampaignStatus;
+  statistics: CampaignStatistics & { queued?: number };
+  created_at?: string | null;
+  updated_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
 
 export interface DashboardEvent {
   type: string;
   conversation_id?: number;
   message?: Message;
+  campaign_id?: number;
+  campaign?: DashboardCampaignEvent;
+  recipient?: Record<string, unknown> | null;
   [key: string]: unknown;
 }
 

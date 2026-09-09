@@ -311,6 +311,13 @@ class Message(models.Model):
         default="received",
     )
 
+    # Dashboard/operator read state. This is intentionally
+    # separate from WhatsApp delivery status above.
+    read_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
     raw_payload = models.JSONField(
         null=True,
         blank=True,

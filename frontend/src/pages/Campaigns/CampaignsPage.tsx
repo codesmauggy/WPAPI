@@ -24,6 +24,9 @@ import type {
 } from "../../api/campaigns";
 
 import type { Campaign } from "../../types/campaign";
+import useDashboardWebSocket, {
+  type DashboardEvent,
+} from "../../hooks/useDashboardWebSocket";
 
 /* =========================================================
    PROPS
@@ -274,43 +277,60 @@ export default function CampaignsPage({
     }, [onSelectCampaign]);
 
   /* =======================================================
-     LIVE POLLING
+     REALTIME CAMPAIGN UPDATES
      ======================================================= */
 
-  useEffect(() => {
-    if (
-      !selectedCampaign ||
-      selectedCampaign.status !==
-        "RUNNING"
-    ) {
-      return;
-    }
+  const handleDashboardEvent = useCallback(
+    (event: DashboardEvent) => {
+      if (event.type !== "campaign.updated" || !event.campaign) {
+        return;
+      }
 
-    /*
-     * Refresh immediately.
-     */
+      const live = event.campaign;
 
-    void refreshSelectedStatus();
-
-    /*
-     * Then refresh every 5 seconds.
-     */
-
-    const interval =
-      window.setInterval(() => {
-        void refreshSelectedStatus();
-      }, 5000);
-
-    return () => {
-      window.clearInterval(
-        interval
+      setCampaigns((current) =>
+        current.map((item) =>
+          item.id === live.id
+            ? {
+                ...item,
+                status: live.status,
+                statistics: {
+                  ...item.statistics,
+                  ...live.statistics,
+                },
+                updated_at: live.updated_at ?? item.updated_at,
+                started_at: live.started_at ?? item.started_at,
+                completed_at: live.completed_at ?? item.completed_at,
+              }
+            : item
+        )
       );
-    };
-  }, [
-    selectedCampaign?.id,
-    selectedCampaign?.status,
-    refreshSelectedStatus,
-  ]);
+
+      if (selectedCampaignRef.current?.id === live.id) {
+        const current = selectedCampaignRef.current;
+        const updated: Campaign = {
+          ...current,
+          status: live.status,
+          statistics: {
+            ...current.statistics,
+            ...live.statistics,
+          },
+          updated_at: live.updated_at ?? current.updated_at,
+          started_at: live.started_at ?? current.started_at,
+          completed_at: live.completed_at ?? current.completed_at,
+        };
+
+        selectedCampaignRef.current = updated;
+        setSelectedCampaign(updated);
+        onSelectCampaign(updated);
+      }
+    },
+    [onSelectCampaign]
+  );
+
+  useDashboardWebSocket({
+    onEvent: handleDashboardEvent,
+  });
 
   /* =======================================================
      RENDER

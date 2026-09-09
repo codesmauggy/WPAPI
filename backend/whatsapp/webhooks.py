@@ -245,6 +245,11 @@ def process_incoming_message(
                 "message_type": message.message_type,
                 "text": message.text,
                 "status": message.status,
+                "read_at": (
+                    message.read_at.isoformat()
+                    if message.read_at
+                    else None
+                ),
                 "created_at": message.created_at.isoformat(),
             },
         }
@@ -335,6 +340,27 @@ def process_message_status(
     # 2. Update Message
     # ---------------------------------------------------------
 
+    # Meta status webhooks can be retried or arrive out of order.
+    # Never move a message backwards in the WhatsApp lifecycle.
+    status_rank = {
+        "sent": 1,
+        "delivered": 2,
+        "read": 3,
+        "failed": 4,
+    }
+
+    if (
+        message.status in status_rank
+        and status in status_rank
+        and status_rank[status] < status_rank[message.status]
+    ):
+        print(
+            f"Ignoring stale WhatsApp status {status} for "
+            f"message {whatsapp_message_id}; current status is "
+            f"{message.status}."
+        )
+        return
+
     message.status = status
 
     if status == "failed":
@@ -362,6 +388,11 @@ def process_message_status(
                 "message_type": message.message_type,
                 "text": message.text,
                 "status": message.status,
+                "read_at": (
+                    message.read_at.isoformat()
+                    if message.read_at
+                    else None
+                ),
                 "created_at": message.created_at.isoformat(),
             },
         }
@@ -491,51 +522,6 @@ def process_message_status(
                 else None
             ),
         }
-    )
-
-def extract_whatsapp_error(
-    status_data: dict,
-) -> str:
-    """
-    Extract a readable error message from
-    a WhatsApp failed status event.
-    """
-
-    errors = status_data.get(
-        "errors",
-        [],
-    )
-
-    if not errors:
-        return "WhatsApp message failed."
-
-    messages = []
-
-    for error in errors:
-
-        message = error.get(
-            "message"
-        )
-
-        code = error.get(
-            "code"
-        )
-
-        if code and message:
-            messages.append(
-                f"{code}: {message}"
-            )
-
-        elif message:
-            messages.append(message)
-
-        elif code:
-            messages.append(
-                f"Error code {code}"
-            )
-
-    return "; ".join(messages) or (
-        "WhatsApp message failed."
     )
 
 def extract_whatsapp_error(
@@ -775,7 +761,7 @@ def send_initial_reply(
                 "id"
             )
 
-        Message.objects.create(
+        message = Message.objects.create(
             conversation=conversation,
             whatsapp_message_id=whatsapp_message_id,
             direction="outbound",
@@ -783,6 +769,24 @@ def send_initial_reply(
             text=reply,
             status="sent",
             raw_payload=result,
+        )
+
+        broadcast_dashboard_event(
+            {
+                "type": "message.created",
+                "conversation_id": conversation.id,
+                "message": {
+                    "id": message.id,
+                    "conversation_id": message.conversation_id,
+                    "whatsapp_message_id": message.whatsapp_message_id,
+                    "direction": message.direction,
+                    "message_type": message.message_type,
+                    "text": message.text,
+                    "status": message.status,
+                    "read_at": None,
+                    "created_at": message.created_at.isoformat(),
+                },
+            }
         )
 
         conversation.last_message_at = timezone.now()
