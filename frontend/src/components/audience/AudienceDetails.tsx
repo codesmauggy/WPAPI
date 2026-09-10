@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Check,
   CheckCircle2,
   FileText,
   Loader2,
@@ -284,13 +283,30 @@ export default function AudienceDetails({
   };
 
   const openAddMembersModal = () => {
+    /*
+    * Close View Members first.
+    *
+    * This prevents Add Members from opening
+    * underneath the View Members dialog.
+    */
+    setShowMembersModal(false);
+
     setError("");
     setMessage("");
+
     setCustomerSearch("");
+
     setSelectedCustomerIds([]);
+
     setCsvFile(null);
+
     setCsvReport("");
+
     setAddMembersTab("customers");
+
+    /*
+    * Open Add Members as the only active dialog.
+    */
     setShowAddMembers(true);
   };
 

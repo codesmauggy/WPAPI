@@ -11,6 +11,9 @@ import {
 
 import { createAudience, getAudiences } from "../../api/audience";
 import type { Audience } from "../../types/audience";
+import useDashboardWebSocket, {
+  type DashboardEvent,
+} from "../../hooks/useDashboardWebSocket";
 
 interface AudiencePageProps {
   selectedAudience?: Audience | null;
@@ -77,6 +80,58 @@ export default function AudiencePage({
 
     return () => window.clearTimeout(timer);
   }, [loadAudiences, refreshToken]);
+
+  const handleDashboardEvent = useCallback(
+    (event: DashboardEvent) => {
+      if (event.type === "audience.created" && event.audience) {
+        const incoming = event.audience as Audience;
+        setAudiences((current) => {
+          if (current.some((item) => item.id === incoming.id)) {
+            return current.map((item) => item.id === incoming.id ? { ...item, ...incoming } : item);
+          }
+          return [incoming, ...current];
+        });
+        if (!selectedIdRef.current) onAudienceSelected?.(incoming);
+        return;
+      }
+
+      if (event.type === "audience.updated" && event.audience) {
+        const incoming = event.audience as Audience;
+        setAudiences((current) => current.map((item) =>
+          item.id === incoming.id ? { ...item, ...incoming } : item,
+        ));
+        if (selectedIdRef.current === incoming.id) onAudienceSelected?.(incoming);
+        return;
+      }
+
+      if (event.type === "audience.membership.updated" && event.audience) {
+        const incoming = event.audience as Audience;
+        setAudiences((current) => current.map((item) =>
+          item.id === incoming.id
+            ? { ...item, member_count: incoming.member_count, updated_at: incoming.updated_at ?? item.updated_at }
+            : item,
+        ));
+        if (selectedIdRef.current === incoming.id) {
+          const selected = {
+            ...(selectedAudience ?? incoming),
+            member_count: incoming.member_count,
+            updated_at: incoming.updated_at ?? selectedAudience?.updated_at ?? null,
+          };
+          onAudienceSelected?.(selected);
+        }
+        return;
+      }
+
+      if (event.type === "audience.deleted" && event.audience_id) {
+        const deletedId = Number(event.audience_id);
+        setAudiences((current) => current.filter((item) => item.id !== deletedId));
+        if (selectedIdRef.current === deletedId) onAudienceSelected?.(null);
+      }
+    },
+    [onAudienceSelected, selectedAudience],
+  );
+
+  useDashboardWebSocket({ onEvent: handleDashboardEvent });
 
   const handleSelectAudience = (audience: Audience) => {
     setActionMessage("");

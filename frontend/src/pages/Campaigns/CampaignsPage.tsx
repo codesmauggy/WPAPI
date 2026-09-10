@@ -14,7 +14,6 @@ import CampaignList from "../../components/campaigns/CampaignList";
 
 import {
   getCampaigns,
-  getCampaignStatus,
 } from "../../api/campaigns";
 
 import NewCampaignPanel from "../../components/campaigns/NewCampaignPanel";
@@ -167,170 +166,231 @@ export default function CampaignsPage({
   }, [loadCampaigns]);
 
   /* =======================================================
-     UPDATE CAMPAIGN FROM STATUS API
-     ======================================================= */
+    REALTIME CAMPAIGN UPDATES
+    ======================================================= */
 
-  const refreshSelectedStatus =
-    useCallback(async () => {
-      const currentSelected =
-        selectedCampaignRef.current;
+  const campaignRealtimeRefreshTimerRef =
+    useRef<number | null>(null);
 
-      if (!currentSelected) {
-        return;
-      }
-
-      try {
-        const response =
-          await getCampaignStatus(
-            currentSelected.id
-          );
-
-        if (!response?.success) {
-          return;
-        }
-
-        const data =
-          response.data;
-
-        const updatedCampaign: Campaign =
-          {
-            ...currentSelected,
-
-            status:
-              data.status,
-
-            statistics: {
-              ...currentSelected.statistics,
-
-              total:
-                data.statistics.total,
-
-              pending:
-                data.statistics.pending,
-
-              sending:
-                data.statistics.sending,
-
-              sent:
-                data.statistics.sent,
-
-              delivered:
-                data.statistics.delivered,
-
-              read:
-                data.statistics.read,
-
-              failed:
-                data.statistics.failed,
-
-              cancelled:
-                data.statistics.cancelled,
-
-              completed:
-                data.statistics.completed,
-            },
-          };
-
-        /*
-         * Update selected campaign ref FIRST.
-         */
-
-        selectedCampaignRef.current =
-          updatedCampaign;
-
-        /*
-         * Update campaign list.
-         */
-
-        setCampaigns(
-          (current) =>
-            current.map(
-              (item) =>
-                item.id ===
-                updatedCampaign.id
-                  ? updatedCampaign
-                  : item
-            )
-        );
-
-        /*
-         * Update selected campaign.
-         */
-
-        setSelectedCampaign(
-          updatedCampaign
-        );
-
-        /*
-         * Update App.tsx right panel.
-         */
-
-        onSelectCampaign(
-          updatedCampaign
-        );
-      } catch (err) {
-        console.error(
-          "Campaign status refresh failed:",
-          err
+  const scheduleCampaignReconciliation =
+    useCallback(() => {
+      if (
+        campaignRealtimeRefreshTimerRef.current !==
+        null
+      ) {
+        window.clearTimeout(
+          campaignRealtimeRefreshTimerRef.current,
         );
       }
-    }, [onSelectCampaign]);
 
-  /* =======================================================
-     REALTIME CAMPAIGN UPDATES
-     ======================================================= */
+      campaignRealtimeRefreshTimerRef.current =
+        window.setTimeout(() => {
+          campaignRealtimeRefreshTimerRef.current =
+            null;
+
+          void loadCampaigns();
+        }, 350);
+    }, [loadCampaigns]);
 
   const handleDashboardEvent = useCallback(
     (event: DashboardEvent) => {
-      if (event.type !== "campaign.updated" || !event.campaign) {
+      if (
+        event.type !== "campaign.updated" ||
+        !event.campaign
+      ) {
         return;
       }
 
       const live = event.campaign;
 
-      setCampaigns((current) =>
-        current.map((item) =>
-          item.id === live.id
-            ? {
-                ...item,
-                status: live.status,
-                statistics: {
-                  ...item.statistics,
-                  ...live.statistics,
-                },
-                updated_at: live.updated_at ?? item.updated_at,
-                started_at: live.started_at ?? item.started_at,
-                completed_at: live.completed_at ?? item.completed_at,
-              }
-            : item
-        )
+      console.log(
+        "Campaign realtime update received:",
+        live,
       );
 
-      if (selectedCampaignRef.current?.id === live.id) {
-        const current = selectedCampaignRef.current;
-        const updated: Campaign = {
-          ...current,
+      /*
+      * Build a campaign update from the
+      * realtime payload.
+      */
+      setCampaigns((current) => {
+        const exists = current.some(
+          (item) => item.id === live.id,
+        );
+
+        /*
+        * Campaign already exists.
+        */
+        if (exists) {
+          return current.map((item) => {
+            if (item.id !== live.id) {
+              return item;
+            }
+
+            return {
+              ...item,
+
+              status:
+                live.status,
+
+              statistics: {
+                ...item.statistics,
+                ...live.statistics,
+              },
+
+              updated_at:
+                live.updated_at ??
+                item.updated_at,
+
+              started_at:
+                live.started_at ??
+                item.started_at,
+
+              completed_at:
+                live.completed_at ??
+                item.completed_at,
+            };
+          });
+        }
+
+        /*
+        * Campaign does not exist in the current
+        * list. Add it so realtime creation/update
+        * cannot be missed.
+        */
+        const newCampaign: Campaign = {
+          id: live.id,
+          name: live.name,
           status: live.status,
+
+          statistics: {
+            total:
+              live.statistics.total ?? 0,
+
+            pending:
+              live.statistics.pending ?? 0,
+
+            sending:
+              live.statistics.sending ?? 0,
+
+            sent:
+              live.statistics.sent ?? 0,
+
+            delivered:
+              live.statistics.delivered ?? 0,
+
+            read:
+              live.statistics.read ?? 0,
+
+            failed:
+              live.statistics.failed ?? 0,
+
+            cancelled:
+              live.statistics.cancelled ?? 0,
+
+            completed:
+              live.statistics.completed ?? 0,
+          },
+
+          created_at:
+            live.created_at ??
+            undefined,
+
+          updated_at:
+            live.updated_at ??
+            undefined,
+
+          started_at:
+            live.started_at ??
+            null,
+
+          completed_at:
+            live.completed_at ??
+            null,
+        };
+
+        return [
+          newCampaign,
+          ...current,
+        ];
+      });
+
+      /*
+      * Keep the selected campaign synchronized.
+      */
+      if (
+        selectedCampaignRef.current?.id ===
+        live.id
+      ) {
+        const current =
+          selectedCampaignRef.current;
+
+        const updatedCampaign: Campaign = {
+          ...current,
+
+          status:
+            live.status,
+
           statistics: {
             ...current.statistics,
             ...live.statistics,
           },
-          updated_at: live.updated_at ?? current.updated_at,
-          started_at: live.started_at ?? current.started_at,
-          completed_at: live.completed_at ?? current.completed_at,
+
+          updated_at:
+            live.updated_at ??
+            current.updated_at,
+
+          started_at:
+            live.started_at ??
+            current.started_at,
+
+          completed_at:
+            live.completed_at ??
+            current.completed_at,
         };
 
-        selectedCampaignRef.current = updated;
-        setSelectedCampaign(updated);
-        onSelectCampaign(updated);
+        selectedCampaignRef.current =
+          updatedCampaign;
+
+        setSelectedCampaign(
+          updatedCampaign,
+        );
+
+        onSelectCampaign(
+          updatedCampaign,
+        );
       }
+
+      /*
+      * Reconcile with REST shortly after the
+      * realtime event.
+      *
+      * This guarantees that fields not included
+      * in the WebSocket payload are also current.
+      */
+      scheduleCampaignReconciliation();
     },
-    [onSelectCampaign]
+    [
+      onSelectCampaign,
+      scheduleCampaignReconciliation,
+    ],
   );
 
   useDashboardWebSocket({
     onEvent: handleDashboardEvent,
   });
+
+  useEffect(() => {
+    return () => {
+      if (
+        campaignRealtimeRefreshTimerRef.current !==
+        null
+      ) {
+        window.clearTimeout(
+          campaignRealtimeRefreshTimerRef.current,
+        );
+      }
+    };
+  }, []);
 
   /* =======================================================
      RENDER

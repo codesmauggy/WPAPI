@@ -92,35 +92,166 @@ export default function TemplatesPage({
     return () => window.clearTimeout(timer);
   }, [loadTemplates]);
 
+  /* =========================================================
+    REALTIME TEMPLATE UPDATES
+    ========================================================= */
+
+  const templateRealtimeRefreshTimerRef =
+    useRef<number | null>(null);
+
+  const scheduleTemplateReconciliation =
+    useCallback(() => {
+      if (
+        templateRealtimeRefreshTimerRef.current !==
+        null
+      ) {
+        window.clearTimeout(
+          templateRealtimeRefreshTimerRef.current,
+        );
+      }
+
+      templateRealtimeRefreshTimerRef.current =
+        window.setTimeout(() => {
+          templateRealtimeRefreshTimerRef.current =
+            null;
+
+          void loadTemplates();
+        }, 350);
+    }, [loadTemplates]);
+
   const handleDashboardEvent = useCallback(
     (event: DashboardEvent) => {
-      if (event.type === "template.created" || event.type === "template.updated") {
-        const incoming = event.template as WhatsAppTemplate | undefined;
-        if (!incoming) return;
+      /*
+      * -----------------------------------------------------
+      * TEMPLATE CREATED / UPDATED
+      * -----------------------------------------------------
+      */
+
+      if (
+        event.type === "template.created" ||
+        event.type === "template.updated"
+      ) {
+        const incoming =
+          event.template as
+            | WhatsAppTemplate
+            | undefined;
+
+        if (!incoming) {
+          console.warn(
+            "Template realtime event received without template payload:",
+            event,
+          );
+
+          return;
+        }
+
+        console.log(
+          "Template realtime update received:",
+          incoming,
+        );
 
         setTemplates((current) => {
-          const exists = current.some((item) => item.id === incoming.id);
+          const exists =
+            current.some(
+              (item) =>
+                item.id === incoming.id,
+            );
+
+          /*
+          * Existing template.
+          */
           if (exists) {
-            return current.map((item) => item.id === incoming.id ? incoming : item);
+            return current.map(
+              (item) =>
+                item.id === incoming.id
+                  ? {
+                      ...item,
+                      ...incoming,
+                    }
+                  : item,
+            );
           }
-          return [incoming, ...current];
+
+          /*
+          * New template.
+          */
+          return [
+            incoming,
+            ...current,
+          ];
         });
 
-        if (selectedTemplate?.id === incoming.id) {
-          onTemplateSelected(incoming);
+        /*
+        * Keep selected template synchronized.
+        */
+        if (
+          selectedTemplateIdRef.current ===
+          incoming.id
+        ) {
+          onTemplateSelected(
+            incoming,
+          );
         }
+
+        /*
+        * Reconcile with current filters.
+        *
+        * This is important because a template may
+        * move from APPROVED → PENDING, etc.
+        */
+        scheduleTemplateReconciliation();
+
         return;
       }
 
-      if (event.type === "template.sync.completed") {
-        setMessage("Templates synchronized with Meta.");
+      /*
+      * -----------------------------------------------------
+      * TEMPLATE SYNC COMPLETED
+      * -----------------------------------------------------
+      */
+
+      if (
+        event.type ===
+        "template.sync.completed"
+      ) {
+        console.log(
+          "Template sync completed:",
+          event,
+        );
+
+        setMessage(
+          "Templates synchronized with Meta.",
+        );
+
         void loadTemplates();
+
+        return;
       }
     },
-    [loadTemplates, onTemplateSelected, selectedTemplate?.id],
+    [
+      loadTemplates,
+      onTemplateSelected,
+      scheduleTemplateReconciliation,
+    ],
   );
 
-  useDashboardWebSocket({ onEvent: handleDashboardEvent });
+  useDashboardWebSocket({
+    onEvent:
+      handleDashboardEvent,
+  });
+
+  useEffect(() => {
+    return () => {
+      if (
+        templateRealtimeRefreshTimerRef.current !==
+        null
+      ) {
+        window.clearTimeout(
+          templateRealtimeRefreshTimerRef.current,
+        );
+      }
+    };
+  }, []);
 
   const visibleCount = templates.length;
 

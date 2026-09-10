@@ -180,13 +180,24 @@ export default function CustomersPage({
         const updatedCustomer =
           event.customer as Customer;
 
-        setCustomers((current) =>
-          current.map((customer) =>
-            customer.id === updatedCustomer.id
-              ? updatedCustomer
-              : customer,
-          ),
-        );
+        setCustomers((current) => {
+          const searchText = search.trim().toLowerCase();
+          const matchesSearch = !searchText ||
+            updatedCustomer.name?.toLowerCase().includes(searchText) ||
+            updatedCustomer.phone?.toLowerCase().includes(searchText) ||
+            updatedCustomer.whatsapp_id?.toLowerCase().includes(searchText);
+
+          if (!matchesSearch) {
+            return current.filter((customer) => customer.id !== updatedCustomer.id);
+          }
+
+          const exists = current.some((customer) => customer.id === updatedCustomer.id);
+          if (!exists) return [updatedCustomer, ...current];
+
+          return current.map((customer) =>
+            customer.id === updatedCustomer.id ? updatedCustomer : customer,
+          );
+        });
 
         /*
         * Keep Business Operations panel synchronized.
