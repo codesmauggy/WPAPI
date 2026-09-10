@@ -7,6 +7,12 @@ from django.db.models import Q
 from ..models import Customer
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+
+from ..events import (
+    broadcast_customer_created,
+    broadcast_customer_updated,
+)
+
 # ============================================================
 # Customer Serializer
 # ============================================================
@@ -408,6 +414,10 @@ def customer_create(request):
                 tags=tags,
                 custom_fields=custom_fields,
             )
+
+        transaction.on_commit(
+            lambda: broadcast_customer_created(customer)
+        )
 
         return JsonResponse({
             "success": True,
@@ -866,8 +876,11 @@ def customer_detail(
             # =================================================
 
             with transaction.atomic():
-
                 customer.save()
+
+            transaction.on_commit(
+                lambda: broadcast_customer_updated(customer)
+            )
 
             return JsonResponse(
                 {

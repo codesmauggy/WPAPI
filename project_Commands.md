@@ -73,11 +73,12 @@ celery -A config inspect registered
 
 
 # Zipping Project
-& "C:\Program Files\7-Zip\7z.exe" a -tzip ".\wp_api_gap_analysis.zip" ".\wp_api\*" `
+& "C:\Program Files\7-Zip\7z.exe" a -tzip ".\wp_api_zip.zip" ".\wp_api\*" `
   "-xr!node_modules" `
   "-xr!.venv" `
   "-xr!__pycache__" `
   "-xr!.git" `
   "-xr!dist" `
   "-xr!build" `
+  "-xr!db.sqlite3" `
   "-x!.env"

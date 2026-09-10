@@ -38,6 +38,19 @@ from .api.send_api import (
     send_conversation_message,
 )
 
+from .api.audience_api import (
+    audience_list,
+    audience_detail,
+    audience_members,
+    audience_member_detail,
+    audience_customers,
+)
+
+from .api.audience_member_bulk import (
+    audience_members_bulk,
+    audience_members_import_csv,
+)
+
 urlpatterns = [
     # ========================================================
     # WhatsApp Webhook
@@ -216,5 +229,51 @@ urlpatterns = [
         "campaigns/<int:campaign_id>/cancel/",
         cancel_campaign,
         name="cancel-campaign",
+    ),
+
+    # ========================================================
+    # Audiences
+    # ========================================================
+
+    path(
+        "audiences/",
+        audience_list,
+        name="audience-list",
+    ),
+
+    path(
+        "audiences/<int:audience_id>/",
+        audience_detail,
+        name="audience-detail",
+    ),
+
+    path(
+        "audiences/<int:audience_id>/members/",
+        audience_members,
+        name="audience-members",
+    ),
+
+    path(
+        "audiences/<int:audience_id>/members/<int:customer_id>/",
+        audience_member_detail,
+        name="audience-member-detail",
+    ),
+
+    path(
+        "audiences/<int:audience_id>/customers/",
+        audience_customers,
+        name="audience-customers",
+    ),
+
+    path(
+        "audiences/<int:audience_id>/members/bulk/",
+        audience_members_bulk,
+        name="audience-members-bulk",
+    ),
+
+    path(
+        "audiences/<int:audience_id>/members/import/",
+        audience_members_import_csv,
+        name="audience-members-import-csv",
     ),
 ]

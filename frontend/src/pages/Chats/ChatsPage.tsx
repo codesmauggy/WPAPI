@@ -5,6 +5,8 @@ import {
   useState,
 } from "react";
 
+import { useSearchParams } from "react-router-dom";
+
 import {
   getConversations,
   getConversationMessages,
@@ -26,24 +28,38 @@ import useDashboardWebSocket, {
 
 interface ChatsPageProps {
   onConversationSelected?: (
-    conversation: Conversation | null
+    conversation: Conversation | null,
   ) => void;
 }
 
 export default function ChatsPage({
   onConversationSelected,
 }: ChatsPageProps) {
-  /*
-   * --------------------------------------------------
-   * STATE
-   * --------------------------------------------------
-   */
+  // =========================================================
+  // URL PARAMETERS
+  // =========================================================
+
+  const [searchParams] = useSearchParams();
+
+  const customerIdParam =
+    searchParams.get("customerId");
+
+  const requestedCustomerId =
+    customerIdParam !== null
+      ? Number(customerIdParam)
+      : null;
+
+  // =========================================================
+  // STATE
+  // =========================================================
 
   const [conversations, setConversations] =
     useState<Conversation[]>([]);
 
-  const [selectedConversationId, setSelectedConversationId] =
-    useState<number | null>(null);
+  const [
+    selectedConversationId,
+    setSelectedConversationId,
+  ] = useState<number | null>(null);
 
   const [messages, setMessages] =
     useState<Message[]>([]);
@@ -63,18 +79,9 @@ export default function ChatsPage({
   const [sending, setSending] =
     useState(false);
 
-  /*
-   * --------------------------------------------------
-   * SELECTED CONVERSATION REF
-   * --------------------------------------------------
-   *
-   * The WebSocket should remain connected when the
-   * operator changes conversations.
-   *
-   * This ref gives the realtime handler the latest
-   * selected conversation without recreating the
-   * WebSocket connection.
-   */
+  // =========================================================
+  // SELECTED CONVERSATION REF
+  // =========================================================
 
   const selectedConversationIdRef =
     useRef<number | null>(null);
@@ -84,74 +91,119 @@ export default function ChatsPage({
       selectedConversationId;
   }, [selectedConversationId]);
 
-  /*
-   * --------------------------------------------------
-   * CURRENT CONVERSATION
-   * --------------------------------------------------
-   */
+  // =========================================================
+  // CURRENT CONVERSATION
+  // =========================================================
 
   const selectedConversation =
     conversations.find(
       (conversation) =>
         conversation.id ===
-        selectedConversationId
+        selectedConversationId,
     ) ?? null;
 
-  /*
-   * --------------------------------------------------
-   * LOAD CONVERSATIONS
-   * --------------------------------------------------
-   */
+  // =========================================================
+  // LOAD CONVERSATIONS
+  // =========================================================
 
   const loadConversations =
     useCallback(async () => {
       try {
+        setLoading(true);
+
         const data =
           await getConversations();
 
         setConversations(data);
 
         /*
-         * Keep current conversation selected if it
-         * still exists.
+         * Priority:
+         *
+         * 1. Customer from URL
+         * 2. Currently selected conversation
+         * 3. First conversation
+         * 4. Nothing
          */
-        setSelectedConversationId(
-          (current) => {
-            if (current !== null) {
-              const exists = data.some(
-                (conversation) =>
-                  conversation.id === current
-              );
 
-              if (exists) {
-                return current;
-              }
-            }
+        let nextSelectedConversationId:
+          | number
+          | null = null;
 
-            /*
-             * Automatically select first conversation
-             * on initial load.
-             */
-            return data.length > 0
-              ? data[0].id
-              : null;
+        // -----------------------------------------------------
+        // 1. Customer specified in URL
+        // -----------------------------------------------------
+
+        if (
+          requestedCustomerId !== null &&
+          !Number.isNaN(requestedCustomerId)
+        ) {
+          const customerConversation =
+            data.find(
+              (conversation) =>
+                conversation.customer.id ===
+                requestedCustomerId,
+            );
+
+          if (customerConversation) {
+            nextSelectedConversationId =
+              customerConversation.id;
           }
+        }
+
+        // -----------------------------------------------------
+        // 2. Keep current conversation
+        // -----------------------------------------------------
+
+        if (
+          nextSelectedConversationId ===
+          null
+        ) {
+          const currentConversation =
+            data.find(
+              (conversation) =>
+                conversation.id ===
+                selectedConversationIdRef.current,
+            );
+
+          if (currentConversation) {
+            nextSelectedConversationId =
+              currentConversation.id;
+          }
+        }
+
+        // -----------------------------------------------------
+        // 3. Select first conversation
+        // -----------------------------------------------------
+
+        if (
+          nextSelectedConversationId ===
+            null &&
+          data.length > 0
+        ) {
+          nextSelectedConversationId =
+            data[0].id;
+        }
+
+        // -----------------------------------------------------
+        // 4. Set selection
+        // -----------------------------------------------------
+
+        setSelectedConversationId(
+          nextSelectedConversationId,
         );
       } catch (error) {
         console.error(
           "Failed to load conversations:",
-          error
+          error,
         );
       } finally {
         setLoading(false);
       }
-    }, []);
+    }, [requestedCustomerId]);
 
-  /*
-   * --------------------------------------------------
-   * LOAD MESSAGES
-   * --------------------------------------------------
-   */
+  // =========================================================
+  // LOAD MESSAGES
+  // =========================================================
 
   const loadMessages = useCallback(
     async (conversationId: number) => {
@@ -160,29 +212,25 @@ export default function ChatsPage({
       try {
         const data =
           await getConversationMessages(
-            conversationId
+            conversationId,
           );
 
-        /*
-         * Sort by creation time so the chat is always
-         * displayed chronologically.
-         */
         const sortedMessages =
           [...data].sort(
             (a, b) =>
               new Date(
-                a.created_at
+                a.created_at,
               ).getTime() -
               new Date(
-                b.created_at
-              ).getTime()
+                b.created_at,
+              ).getTime(),
           );
 
         setMessages(sortedMessages);
       } catch (error) {
         console.error(
           "Failed to load messages:",
-          error
+          error,
         );
 
         setMessages([]);
@@ -190,66 +238,49 @@ export default function ChatsPage({
         setLoadingMessages(false);
       }
     },
-    []
+    [],
   );
 
-  /*
-   * --------------------------------------------------
-   * MARK CONVERSATION READ
-   * --------------------------------------------------
-   *
-   * The database is the source of truth for dashboard
-   * unread state. WebSocket distributes the resulting
-   * conversation.updated event to connected clients.
-   */
+  // =========================================================
+  // MARK CONVERSATION READ
+  // =========================================================
 
   const markSelectedConversationRead =
-    useCallback(async (conversationId: number) => {
-      try {
-        const result =
-          await markConversationRead(
-            conversationId
+    useCallback(
+      async (conversationId: number) => {
+        try {
+          const result =
+            await markConversationRead(
+              conversationId,
+            );
+
+          setConversations(
+            (current) =>
+              current.map(
+                (conversation) =>
+                  conversation.id ===
+                  conversationId
+                    ? {
+                        ...conversation,
+                        unread_count:
+                          result.unread_count,
+                      }
+                    : conversation,
+              ),
           );
+        } catch (error) {
+          console.error(
+            "Failed to mark conversation as read:",
+            error,
+          );
+        }
+      },
+      [],
+    );
 
-        setConversations((current) =>
-          current.map((conversation) =>
-            conversation.id === conversationId
-              ? {
-                  ...conversation,
-                  unread_count: result.unread_count,
-                }
-              : conversation
-          )
-        );
-      } catch (error) {
-        console.error(
-          "Failed to mark conversation as read:",
-          error
-        );
-      }
-    }, []);
-
-  /*
-   * --------------------------------------------------
-   * REALTIME WEBSOCKET EVENTS
-   * --------------------------------------------------
-   *
-   * IMPORTANT:
-   *
-   * There is NO manual:
-   *
-   *     new WebSocket(...)
-   *
-   * in this component.
-   *
-   * useDashboardWebSocket owns the connection.
-   *
-   * Supported events:
-   *
-   * message.created
-   * message.updated
-   * conversation.updated
-   */
+  // =========================================================
+  // REALTIME WEBSOCKET EVENTS
+  // =========================================================
 
   const handleDashboardEvent =
     useCallback(
@@ -257,16 +288,9 @@ export default function ChatsPage({
         const selectedId =
           selectedConversationIdRef.current;
 
-        /*
-         * --------------------------------------------------
-         * MESSAGE CREATED
-         * --------------------------------------------------
-         *
-         * This handles BOTH:
-         *
-         * inbound messages
-         * outbound queued messages
-         */
+        // =====================================================
+        // MESSAGE CREATED
+        // =====================================================
 
         if (
           event.type ===
@@ -278,28 +302,23 @@ export default function ChatsPage({
 
           console.log(
             "[WS] message.created",
-            newMessage
+            newMessage,
           );
 
-          /*
-           * If this message belongs to the currently
-           * open conversation, add it immediately.
-           */
+          // ---------------------------------------------------
+          // Add message to currently open conversation
+          // ---------------------------------------------------
+
           if (
             newMessage.conversation_id ===
             selectedId
           ) {
             setMessages((current) => {
-              /*
-               * Prevent duplicate message when the API
-               * response and WebSocket event arrive close
-               * together.
-               */
               const exists =
                 current.some(
                   (message) =>
                     message.id ===
-                    newMessage.id
+                    newMessage.id,
                 );
 
               if (exists) {
@@ -312,106 +331,89 @@ export default function ChatsPage({
               ];
             });
 
-            // If the conversation is currently open, the
-            // inbound message is immediately considered read
-            // by the dashboard and persisted in the DB.
-            if (newMessage.direction === "inbound") {
+            /*
+             * If the inbound message belongs to the
+             * currently open conversation, mark it read.
+             */
+
+            if (
+              newMessage.direction ===
+              "inbound"
+            ) {
               void markSelectedConversationRead(
-                newMessage.conversation_id
+                newMessage.conversation_id,
               );
             }
           }
 
-          /*
-           * Update conversation preview locally.
-           *
-           * No REST request required.
-           */
-          setConversations((current) =>
-            current.map(
-              (conversation) => {
-                if (
-                  conversation.id !==
-                  newMessage.conversation_id
-                ) {
-                  return conversation;
-                }
+          // ---------------------------------------------------
+          // Update conversation preview
+          // ---------------------------------------------------
 
-                const isCurrentConversation =
-                  conversation.id ===
-                  selectedId;
+          setConversations(
+            (current) =>
+              current.map(
+                (conversation) => {
+                  if (
+                    conversation.id !==
+                    newMessage.conversation_id
+                  ) {
+                    return conversation;
+                  }
 
-                const isInbound =
-                  newMessage.direction ===
-                  "inbound";
+                  const isCurrentConversation =
+                    conversation.id ===
+                    selectedId;
 
-                return {
-                  ...conversation,
+                  const isInbound =
+                    newMessage.direction ===
+                    "inbound";
 
-                  last_message: {
-                    id: newMessage.id,
-                    whatsapp_message_id:
-                      newMessage.whatsapp_message_id,
-                    direction:
-                      newMessage.direction,
-                    message_type:
-                      newMessage.message_type,
-                    text:
-                      newMessage.text,
-                    status:
-                      newMessage.status,
-                    created_at:
+                  return {
+                    ...conversation,
+
+                    last_message: {
+                      id: newMessage.id,
+                      whatsapp_message_id:
+                        newMessage.whatsapp_message_id,
+                      direction:
+                        newMessage.direction,
+                      message_type:
+                        newMessage.message_type,
+                      text:
+                        newMessage.text,
+                      status:
+                        newMessage.status,
+                      read_at:
+                        newMessage.read_at,
+                      created_at:
+                        newMessage.created_at,
+                    },
+
+                    last_message_at:
                       newMessage.created_at,
-                  },
 
-                  last_message_at:
-                    newMessage.created_at,
+                    updated_at:
+                      new Date().toISOString(),
 
-                  updated_at:
-                    new Date().toISOString(),
-
-                  /*
-                   * Don't show an unread badge for a
-                   * conversation the operator is already
-                   * viewing.
-                   */
-                  unread_count:
-                    isCurrentConversation
-                      ? 0
-                      : conversation.unread_count +
-                        (isInbound
-                          ? 1
-                          : 0),
-                };
-              }
-            )
+                    unread_count:
+                      isCurrentConversation
+                        ? 0
+                        : conversation.unread_count +
+                          (isInbound
+                            ? 1
+                            : 0),
+                  };
+                },
+              ),
           );
 
           return;
         }
 
-        /*
-         * --------------------------------------------------
-         * MESSAGE UPDATED
-         * --------------------------------------------------
-         *
-         * This is the important part for outbound
-         * WhatsApp delivery lifecycle:
-         *
-         * queued
-         *    ↓
-         * sending
-         *    ↓
-         * sent
-         *    ↓
-         * delivered
-         *    ↓
-         * read
-         *
-         * Or:
-         *
-         * failed
-         */
+        // =====================================================
+        // MESSAGE UPDATED
+        // =====================================================
 
         if (
           event.type ===
@@ -423,8 +425,12 @@ export default function ChatsPage({
 
           console.log(
             "[WS] message.updated",
-            updatedMessage
+            updatedMessage,
           );
+
+          // ---------------------------------------------------
+          // Update message inside open chat
+          // ---------------------------------------------------
 
           if (
             updatedMessage.conversation_id ===
@@ -435,13 +441,9 @@ export default function ChatsPage({
                 current.some(
                   (message) =>
                     message.id ===
-                    updatedMessage.id
+                    updatedMessage.id,
                 );
 
-              /*
-               * If the original created event was missed,
-               * don't lose the updated message.
-               */
               if (!exists) {
                 return [
                   ...current,
@@ -454,69 +456,67 @@ export default function ChatsPage({
                   message.id ===
                   updatedMessage.id
                     ? updatedMessage
-                    : message
+                    : message,
               );
             });
           }
 
-          /*
-           * Update last-message status in conversation list.
-           */
-          setConversations((current) =>
-            current.map(
-              (conversation) => {
-                if (
-                  conversation.id !==
-                  updatedMessage.conversation_id
-                ) {
-                  return conversation;
-                }
+          // ---------------------------------------------------
+          // Update last message status
+          // ---------------------------------------------------
 
-                /*
-                 * Only replace the preview if this
-                 * conversation's last message is the
-                 * message being updated.
-                 */
-                if (
-                  conversation.last_message
-                    ?.id !==
-                  updatedMessage.id
-                ) {
+          setConversations(
+            (current) =>
+              current.map(
+                (conversation) => {
+                  if (
+                    conversation.id !==
+                    updatedMessage.conversation_id
+                  ) {
+                    return conversation;
+                  }
+
+                  if (
+                    conversation.last_message
+                      ?.id !==
+                    updatedMessage.id
+                  ) {
+                    return {
+                      ...conversation,
+                      updated_at:
+                        new Date().toISOString(),
+                    };
+                  }
+
                   return {
                     ...conversation,
+
+                    last_message: {
+                      ...conversation.last_message,
+
+                      whatsapp_message_id:
+                        updatedMessage.whatsapp_message_id,
+
+                      status:
+                        updatedMessage.status,
+
+                      read_at:
+                        updatedMessage.read_at,
+                    },
+
                     updated_at:
                       new Date().toISOString(),
                   };
-                }
-
-                return {
-                  ...conversation,
-
-                  last_message: {
-                    ...conversation.last_message,
-
-                    whatsapp_message_id:
-                      updatedMessage.whatsapp_message_id,
-
-                    status:
-                      updatedMessage.status,
-                  },
-
-                  updated_at:
-                    new Date().toISOString(),
-                };
-              }
-            )
+                },
+              ),
           );
 
           return;
         }
 
-        /*
-         * --------------------------------------------------
-         * CONVERSATION UPDATED
-         * --------------------------------------------------
-         */
+        // =====================================================
+        // CONVERSATION UPDATED
+        // =====================================================
 
         if (
           event.type ===
@@ -527,14 +527,9 @@ export default function ChatsPage({
 
           console.log(
             "[WS] conversation.updated",
-            event
+            event,
           );
 
-          /*
-           * DashboardEvent may contain additional
-           * conversation fields depending on the
-           * backend event.
-           */
           const conversationEvent =
             event as DashboardEvent & {
               unread_count?: number;
@@ -550,88 +545,83 @@ export default function ChatsPage({
                 | Conversation["last_message"];
             };
 
-          setConversations((current) =>
-            current.map(
-              (conversation) => {
-                if (
-                  conversation.id !==
-                  conversationId
-                ) {
-                  return conversation;
-                }
+          setConversations(
+            (current) =>
+              current.map(
+                (conversation) => {
+                  if (
+                    conversation.id !==
+                    conversationId
+                  ) {
+                    return conversation;
+                  }
 
-                return {
-                  ...conversation,
+                  return {
+                    ...conversation,
 
-                  ...(conversationEvent.status !==
-                  undefined
-                    ? {
-                        status:
-                          conversationEvent.status,
-                      }
-                    : {}),
+                    ...(conversationEvent.status !==
+                    undefined
+                      ? {
+                          status:
+                            conversationEvent.status,
+                        }
+                      : {}),
 
-                  ...(conversationEvent.unread_count !==
-                  undefined
-                    ? {
-                        unread_count:
-                          conversationEvent.unread_count,
-                      }
-                    : {}),
+                    ...(conversationEvent.unread_count !==
+                    undefined
+                      ? {
+                          unread_count:
+                            conversationEvent.unread_count,
+                        }
+                      : {}),
 
-                  ...(conversationEvent.last_message_at !==
-                  undefined
-                    ? {
-                        last_message_at:
-                          conversationEvent.last_message_at,
-                      }
-                    : {}),
+                    ...(conversationEvent.last_message_at !==
+                    undefined
+                      ? {
+                          last_message_at:
+                            conversationEvent.last_message_at,
+                        }
+                      : {}),
 
-                  ...(conversationEvent.last_message !==
-                  undefined
-                    ? {
-                        last_message:
-                          conversationEvent.last_message,
-                      }
-                    : {}),
+                    ...(conversationEvent.last_message !==
+                    undefined
+                      ? {
+                          last_message:
+                            conversationEvent.last_message,
+                        }
+                      : {}),
 
-                  updated_at:
-                    new Date().toISOString(),
-                };
-              }
-            )
+                    updated_at:
+                      new Date().toISOString(),
+                  };
+                },
+              ),
           );
         }
       },
-      [markSelectedConversationRead]
+      [markSelectedConversationRead],
     );
 
-  /*
-   * --------------------------------------------------
-   * SINGLE PERSISTENT WEBSOCKET
-   * --------------------------------------------------
-   */
+  // =========================================================
+  // SINGLE PERSISTENT WEBSOCKET
+  // =========================================================
 
   useDashboardWebSocket({
     onEvent:
       handleDashboardEvent,
   });
 
-  /*
-   * --------------------------------------------------
-   * INITIAL LOAD
-   * --------------------------------------------------
-   */
+  // =========================================================
+  // INITIAL LOAD
+  // =========================================================
 
   useEffect(() => {
-    loadConversations();
+    void loadConversations();
   }, [loadConversations]);
 
-  /*
-   * --------------------------------------------------
-   * CONVERSATION SELECTION
-   * --------------------------------------------------
-   */
+  // =========================================================
+  // CONVERSATION SELECTION
+  // =========================================================
 
   useEffect(() => {
     if (
@@ -641,19 +631,18 @@ export default function ChatsPage({
       setMessages([]);
 
       onConversationSelected?.(
-        null
+        null,
       );
 
       return;
     }
 
-    loadMessages(
-      selectedConversationId
+    void loadMessages(
+      selectedConversationId,
     );
 
-    // Persist dashboard read state in the database.
     void markSelectedConversationRead(
-      selectedConversationId
+      selectedConversationId,
     );
   }, [
     selectedConversationId,
@@ -662,40 +651,34 @@ export default function ChatsPage({
     onConversationSelected,
   ]);
 
-  /*
-   * --------------------------------------------------
-   * RIGHT CUSTOMER PANEL
-   * --------------------------------------------------
-   */
+  // =========================================================
+  // RIGHT CUSTOMER PANEL
+  // =========================================================
 
   useEffect(() => {
     onConversationSelected?.(
-      selectedConversation
+      selectedConversation,
     );
   }, [
     selectedConversation,
     onConversationSelected,
   ]);
 
-  /*
-   * --------------------------------------------------
-   * SELECT CONVERSATION
-   * --------------------------------------------------
-   */
+  // =========================================================
+  // SELECT CONVERSATION
+  // =========================================================
 
   const handleSelectConversation = (
-    conversation: Conversation
+    conversation: Conversation,
   ) => {
     setSelectedConversationId(
-      conversation.id
+      conversation.id,
     );
   };
 
-  /*
-   * --------------------------------------------------
-   * SEND MESSAGE
-   * --------------------------------------------------
-   */
+  // =========================================================
+  // SEND MESSAGE
+  // =========================================================
 
   const handleSend = async () => {
     const text =
@@ -714,31 +697,32 @@ export default function ChatsPage({
 
     try {
       /*
-       * Backend returns the Message in QUEUED state.
+       * Backend creates the message in QUEUED state.
        */
+
       const queuedMessage =
         await sendConversationMessage(
           selectedConversationId,
-          text
+          text,
         );
 
       console.log(
         "[CHAT] Message queued:",
-        queuedMessage
+        queuedMessage,
       );
 
       /*
-       * Add immediately so the operator doesn't have
-       * to wait for the WebSocket event.
+       * Immediately display the queued message.
        *
-       * WebSocket duplicate is prevented by ID check.
+       * WebSocket duplicate is prevented by ID.
        */
+
       setMessages((current) => {
         const exists =
           current.some(
             (message) =>
               message.id ===
-              queuedMessage.id
+              queuedMessage.id,
           );
 
         if (exists) {
@@ -754,36 +738,31 @@ export default function ChatsPage({
       setMessageText("");
 
       /*
-       * DO NOT call loadConversations() here.
+       * No REST refresh here.
        *
-       * The WebSocket will update:
+       * WebSocket handles:
        *
        * message.created
        * message.updated
        * conversation.updated
-       *
-       * This removes the unnecessary REST request and
-       * reduces UI lag.
        */
     } catch (error) {
       console.error(
         "Failed to send message:",
-        error
+        error,
       );
 
       alert(
-        "Failed to queue WhatsApp message."
+        "Failed to queue WhatsApp message.",
       );
     } finally {
       setSending(false);
     }
   };
 
-  /*
-   * --------------------------------------------------
-   * LOADING
-   * --------------------------------------------------
-   */
+  // =========================================================
+  // LOADING
+  // =========================================================
 
   if (loading) {
     return (
@@ -793,11 +772,9 @@ export default function ChatsPage({
     );
   }
 
-  /*
-   * --------------------------------------------------
-   * RENDER
-   * --------------------------------------------------
-   */
+  // =========================================================
+  // RENDER
+  // =========================================================
 
   return (
     <div className="chat-page">
