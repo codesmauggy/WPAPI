@@ -14,12 +14,14 @@ import CampaignsPage from "./pages/Campaigns/CampaignsPage";
 import ChatsPage from "./pages/Chats/ChatsPage";
 import CustomersPage from "./pages/Customers/CustomersPage";
 import AudiencePage from "./pages/Audience/AudiencePage";
+import TemplatesPage from "./pages/Templates/TemplatesPage";
 
 import CampaignDetails from "./components/campaigns/CampaignDetails";
 import CampaignDeliveryReport from "./components/campaigns/CampaignDeliveryReport";
 import ChatCustomerPanel from "./components/chat/ChatCustomerPanel";
 import CustomerDetails from "./components/customer/CustomerDetails";
 import AudienceDetails from "./components/audience/AudienceDetails";
+import TemplateDetails from "./components/templates/TemplateDetails";
 
 import type { Campaign } from "./types/campaign";
 import type { Conversation } from "./types/chat";
@@ -84,6 +86,13 @@ function App() {
     selectedAudience,
     setSelectedAudience,
   ] = useState<Audience | null>(
+    null,
+  );
+
+  const [
+    selectedTemplate,
+    setSelectedTemplate,
+  ] = useState<WhatsAppTemplate | null>(
     null,
   );
 
@@ -381,6 +390,18 @@ function App() {
         );
 
       // -----------------------------------------------------
+      // TEMPLATES
+      // -----------------------------------------------------
+
+      case "templates":
+        return (
+          <TemplatesPage
+            selectedTemplate={selectedTemplate}
+            onTemplateSelected={setSelectedTemplate}
+          />
+        );
+
+      // -----------------------------------------------------
       // CUSTOMERS
       // -----------------------------------------------------
 
@@ -486,6 +507,15 @@ function App() {
               handleCustomerUpdated
             }
           />
+        );
+
+      // -----------------------------------------------------
+      // TEMPLATES
+      // -----------------------------------------------------
+
+      case "templates":
+        return (
+          <TemplateDetails template={selectedTemplate} />
         );
 
       // -----------------------------------------------------

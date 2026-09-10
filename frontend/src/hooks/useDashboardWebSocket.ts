@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { Message } from "../types/chat";
 import type { CampaignStatistics, CampaignStatus } from "../types/campaign";
+import type { WhatsAppTemplate } from "../types/template";
 
 export interface DashboardCampaignEvent {
   id: number;
@@ -19,6 +20,7 @@ export interface DashboardEvent {
   message?: Message;
   campaign_id?: number;
   campaign?: DashboardCampaignEvent;
+  template?: WhatsAppTemplate;
   recipient?: Record<string, unknown> | null;
   [key: string]: unknown;
 }

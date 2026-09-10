@@ -51,6 +51,12 @@ from .api.audience_member_bulk import (
     audience_members_import_csv,
 )
 
+from .api.template_api import (
+    template_list,
+    template_detail,
+    template_sync,
+)
+
 urlpatterns = [
     # ========================================================
     # WhatsApp Webhook
@@ -275,5 +281,27 @@ urlpatterns = [
         "audiences/<int:audience_id>/members/import/",
         audience_members_import_csv,
         name="audience-members-import-csv",
+    ),
+
+    # ========================================================
+    # Templates
+    # ========================================================
+
+    path(
+        "templates/",
+        template_list,
+        name="template-list",
+    ),
+
+    path(
+        "templates/sync/",
+        template_sync,
+        name="template-sync",
+    ),
+
+    path(
+        "templates/<int:template_id>/",
+        template_detail,
+        name="template-detail",
     ),
 ]

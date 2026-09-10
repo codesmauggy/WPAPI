@@ -14,6 +14,8 @@ class WhatsAppAPIError(Exception):
     """Raised when the WhatsApp API returns an error."""
 
 
+from .events import broadcast_dashboard_event
+
 def send_text_message(
     recipient_phone: str,
     message: str,
@@ -242,8 +244,28 @@ def sync_whatsapp_templates():
 
         if created:
             created_count += 1
+            event_type = "template.created"
         else:
             updated_count += 1
+            event_type = "template.updated"
+
+        broadcast_dashboard_event({
+            "type": event_type,
+            "template": {
+                "id": template.id,
+                "name": template.name,
+                "language": template.language,
+                "category": template.category,
+                "status": template.status,
+                "meta_template_id": template.meta_template_id,
+                "components": template.components,
+                "quality_score": template.quality_score,
+                "rejected_reason": template.rejected_reason,
+                "synced_at": template.synced_at.isoformat() if template.synced_at else None,
+                "created_at": template.created_at.isoformat() if template.created_at else None,
+                "updated_at": template.updated_at.isoformat() if template.updated_at else None,
+            },
+        })
 
     return {
         "total": len(templates),
